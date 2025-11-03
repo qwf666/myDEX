@@ -1,0 +1,15 @@
+// 合约地址 - Sepolia网络
+export const CONTRACTS = {
+  POOL_MANAGER: "0xddC12b3F9F7C91C79DA7433D8d212FB78d609f7B" as `0x${string}`,
+  POSITION_MANAGER: "0xbe766Bf20eFfe431829C5d5a2744865974A0B610" as `0x${string}`,
+  SWAP_ROUTER: "0xD2c220143F5784b3bD84ae12747d97C8A36CeCB2" as `0x${string}`,
+} as const;
+
+// 测试用ERC20代币地址
+export const TOKENS = {
+  MN_TOKEN_A: "0x4798388e3adE569570Df626040F07DF71135C48E" as `0x${string}`,
+  MN_TOKEN_B: "0x5A4eA3a013D42Cfd1B1609d19f6eA998EeE06D30" as `0x${string}`,
+  MN_TOKEN_C: "0x86B5df6FF459854ca91318274E47F4eEE245CF28" as `0x${string}`,
+  MN_TOKEN_D: "0x7af86B1034AC4C925Ef5C3F637D1092310d83F03" as `0x${string}`,
+} as const;
+
