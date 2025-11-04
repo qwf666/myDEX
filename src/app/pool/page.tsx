@@ -114,7 +114,7 @@ export default function PoolPage() {
 
   if (!isConnected) {
     return (
-      <main className="container py-6">
+      <main className="container py-6 pl-8 md:pl-12 lg:pl-16">
         <Card>
           <CardHeader>
             <CardTitle>连接钱包</CardTitle>
@@ -126,7 +126,7 @@ export default function PoolPage() {
   }
 
   return (
-    <main className="container py-6">
+    <main className="container py-6 pl-8 md:pl-12 lg:pl-16">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Pools</h1>
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
@@ -243,37 +243,39 @@ export default function PoolPage() {
 
           {/* 分页 */}
           {totalPages > 1 && (
-            <Pagination className="mt-4">
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                    className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                  />
-                </PaginationItem>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <PaginationItem key={page}>
-                    <PaginationLink
-                      onClick={() => setCurrentPage(page)}
-                      isActive={currentPage === page}
-                      className="cursor-pointer"
-                    >
-                      {page}
-                    </PaginationLink>
+            <div className="mt-6 mb-4 relative z-10">
+              <Pagination className="mt-4">
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                      className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                    />
                   </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                    className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <PaginationItem key={page}>
+                      <PaginationLink
+                        onClick={() => setCurrentPage(page)}
+                        isActive={currentPage === page}
+                        className="cursor-pointer"
+                      >
+                        {page}
+                      </PaginationLink>
+                    </PaginationItem>
+                  ))}
+                  <PaginationItem>
+                    <PaginationNext
+                      onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                      className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
           )}
 
           {/* 分页信息 */}
-          <div className="mt-2 text-sm text-muted-foreground text-center">
+          <div className="mt-4 mb-6 text-sm text-muted-foreground text-center relative z-10">
             显示 {startIndex + 1}-{Math.min(endIndex, pools.length)} / 共 {pools.length} 个池子
           </div>
         </>
