@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
-import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useWriteContract, useWaitForTransactionReceipt, useSimulateContract } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,12 +33,14 @@ import {
 } from "@/components/ui/dialog";
 import { TokenSelector } from "@/components/token/TokenSelector";
 import { TokenBalance } from "@/components/token/TokenBalance";
+import { TokenApprove } from "@/components/token/TokenApprove";
 import { usePositions } from "@/hooks/usePositions";
 import { usePoolsByPair } from "@/hooks/usePoolsByPair";
 import { useTokenInfo } from "@/hooks/useTokenInfo";
 import { CONTRACTS } from "@/lib/contracts/addresses";
 import { POSITION_MANAGER_ABI } from "@/lib/contracts/abis";
 import { formatTokenAmount, formatFee, formatAddress, parseTokenAmount } from "@/lib/utils/format";
+import { parseError } from "@/lib/utils/errors";
 import type { PositionInfo } from "@/lib/contracts/types";
 import type { Address } from "viem";
 
@@ -75,11 +77,51 @@ export default function PositionPage() {
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const paginatedPositions = positions.slice(startIndex, endIndex);
 
-  const { writeContract: mint, data: mintHash, isPending: isMinting } = useWriteContract();
+  // 模拟交易以检查是否有效
+  const deadline = poolIndex !== undefined && token0 && token1 && amount0 && amount1 && address
+    ? BigInt(Math.floor(Date.now() / 1000) + 60 * 20)
+    : undefined;
+  const amount0Desired = token0 && amount0 ? parseTokenAmount(amount0, token0Info?.decimals || 18) : undefined;
+  const amount1Desired = token1 && amount1 ? parseTokenAmount(amount1, token1Info?.decimals || 18) : undefined;
+
+  const { data: simulateData, error: simulateError } = useSimulateContract({
+    address: CONTRACTS.POSITION_MANAGER,
+    abi: POSITION_MANAGER_ABI,
+    functionName: "mint",
+    args: token0 && token1 && poolIndex !== undefined && amount0Desired !== undefined && amount1Desired !== undefined && address && deadline
+      ? [
+          {
+            token0,
+            token1,
+            index: Number(poolIndex),
+            amount0Desired,
+            amount1Desired,
+            recipient: address,
+            deadline,
+          },
+        ]
+      : undefined,
+    query: {
+      enabled: !!token0 && !!token1 && poolIndex !== undefined && !!amount0 && !!amount1 && !!address,
+    },
+  });
+
+  const { writeContract: mint, data: mintHash, isPending: isMinting, error: mintError } = useWriteContract();
 
   const { isLoading: isMintConfirming, isSuccess: isMintSuccess } = useWaitForTransactionReceipt({
     hash: mintHash,
   });
+
+  // 处理错误
+  useEffect(() => {
+    if (mintError) {
+      console.error("Mint 错误:", mintError);
+      alert(`交易失败: ${parseError(mintError)}`);
+    }
+    if (simulateError) {
+      console.error("模拟交易错误:", simulateError);
+    }
+  }, [mintError, simulateError]);
 
   // 处理Mint成功
   useEffect(() => {
@@ -97,27 +139,20 @@ export default function PositionPage() {
 
   const handleMint = () => {
     if (!token0 || !token1 || poolIndex === undefined || !amount0 || !amount1 || !address) return;
+    if (!simulateData?.request) {
+      alert("无法模拟交易，请检查参数是否正确");
+      return;
+    }
 
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + 60 * 20); // 20分钟后过期
-    const amount0Desired = parseTokenAmount(amount0, token0Info?.decimals || 18);
-    const amount1Desired = parseTokenAmount(amount1, token1Info?.decimals || 18);
-
-    mint({
-      address: CONTRACTS.POSITION_MANAGER,
-      abi: POSITION_MANAGER_ABI,
-      functionName: "mint",
-      args: [
-        {
-          token0,
-          token1,
-          index: Number(poolIndex),
-          amount0Desired,
-          amount1Desired,
-          recipient: address,
-          deadline,
-        },
-      ],
-    });
+    try {
+      mint({
+        ...simulateData.request,
+        gas: BigInt(16000000), // 设置 gas limit 为 16000000，低于网络限制 16777216
+      });
+    } catch (error) {
+      console.error("发送交易失败:", error);
+      alert(`发送交易失败: ${parseError(error)}`);
+    }
   };
 
   if (!isConnected) {
@@ -203,6 +238,29 @@ export default function PositionPage() {
                 </div>
               )}
 
+              {/* 错误提示 */}
+              {simulateError && (
+                <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 p-2 rounded">
+                  {parseError(simulateError)}
+                </div>
+              )}
+
+              {/* 代币授权 */}
+              {token0 && amount0 && (
+                <TokenApprove
+                  tokenAddress={token0}
+                  spender={CONTRACTS.POSITION_MANAGER}
+                  amount={amount0}
+                />
+              )}
+              {token1 && amount1 && (
+                <TokenApprove
+                  tokenAddress={token1}
+                  spender={CONTRACTS.POSITION_MANAGER}
+                  amount={amount1}
+                />
+              )}
+
               <Button
                 onClick={handleMint}
                 disabled={
@@ -214,7 +272,8 @@ export default function PositionPage() {
                   isMinting ||
                   isMintConfirming ||
                   token0 === token1 ||
-                  availablePools.length === 0
+                  availablePools.length === 0 ||
+                  !simulateData?.request
                 }
                 className="w-full"
               >

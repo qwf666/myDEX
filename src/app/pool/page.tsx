@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
-import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useWriteContract, useWaitForTransactionReceipt, useEstimateFeesPerGas } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,6 +46,9 @@ export default function PoolPage() {
   const { address, isConnected } = useAccount();
   const queryClient = useQueryClient();
   const { pools, isLoading: poolsLoading, refetch: refetchPools } = usePools();
+
+  // 获取 gas 价格
+  const { data: feeData } = useEstimateFeesPerGas();
 
   const [currentPage, setCurrentPage] = useState(1);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -95,6 +98,11 @@ export default function PoolPage() {
     const price = parseFloat(initialPrice);
     const sqrtPriceX96 = priceToSqrtX96(price);
 
+    // 使用获取的 gas 价格或默认值（确保有足够的 gas 价格）
+    // Sepolia 测试网通常需要更高的 gas 价格
+    const maxFeePerGas = feeData?.maxFeePerGas || BigInt(100000000000); // 默认 100 Gwei
+    const maxPriorityFeePerGas = feeData?.maxPriorityFeePerGas || BigInt(5000000000); // 默认 5 Gwei
+
     createPool({
       address: CONTRACTS.POOL_MANAGER,
       abi: POOL_MANAGER_ABI,
@@ -109,6 +117,9 @@ export default function PoolPage() {
           sqrtPriceX96,
         },
       ],
+      gas: BigInt(16000000), // 设置 gas limit 为 16000000，低于网络限制 16777216
+      maxFeePerGas,
+      maxPriorityFeePerGas,
     });
   };
 

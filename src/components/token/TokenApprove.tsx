@@ -9,11 +9,11 @@ import { useTokenAllowance } from "@/hooks/useTokenAllowance";
 import { parseTokenAmount } from "@/lib/utils/format";
 import { useTokenInfo } from "@/hooks/useTokenInfo";
 import { useQueryClient } from "@tanstack/react-query";
-import type { `0x${string}` } from "viem";
+import type { Address } from "viem";
 
 interface TokenApproveProps {
-  tokenAddress: `0x${string}` | undefined;
-  spender: `0x${string}` | undefined;
+  tokenAddress: Address | undefined;
+  spender: Address | undefined;
   amount: string;
   onApproved?: () => void;
 }
