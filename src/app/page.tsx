@@ -12,7 +12,7 @@
 "use client";
 
 // ============ React核心Hooks ============
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 
 // ============ Wagmi Hooks - 用于与区块链交互 ============
 // useAccount: 获取当前连接的钱包地址和连接状态
@@ -37,11 +37,12 @@ import { TokenBalance } from "@/components/token/TokenBalance"; // 代币余额�
 
 // ============ 合约配置 ============
 import { CONTRACTS } from "@/lib/contracts/addresses"; // 合约地址配置
-import { SWAP_ROUTER_ABI } from "@/lib/contracts/abis"; // Swap路由合约ABI
+import { SWAP_ROUTER_ABI, ERC20_ABI } from "@/lib/contracts/abis"; // Swap路由合约ABI和ERC20 ABI
 
 // ============ 自定义Hooks ============
 import { usePools } from "@/hooks/usePools"; // 获取所有流动性池数据
 import { useTokenInfo } from "@/hooks/useTokenInfo"; // 获取代币信息（名称、符号、小数位等）
+import { useTokenAllowance } from "@/hooks/useTokenAllowance"; // 检查代币授权额度
 
 // ============ 工具函数 ============
 import { parseTokenAmount, formatTokenAmount, formatFee } from "@/lib/utils/format"; // 金额格式化工具
@@ -68,8 +69,8 @@ import type { Address } from "viem"; // 以太坊地址类型
  *   sqrtPriceX96 = sqrt(price) * 2^96
  *   这样可以保持高精度并避免浮点数运算
  */
-const MIN_SQRT_PRICE = 4295128739n;
-const MAX_SQRT_PRICE = 1461446703485210103287273052203988822378723970342n;
+const MIN_SQRT_PRICE = BigInt("4295128739");
+const MAX_SQRT_PRICE = BigInt("1461446703485210103287273052203988822378723970342");
 
 export default function SwapPage() {
   // ============ Wagmi Hooks - 钱包和账户信息 ============
@@ -208,7 +209,6 @@ export default function SwapPage() {
    * 格式: "token0-token1-index,token0-token1-index,..."
    */
   const poolsKey = pools.length > 0 ? pools.map(p => `${p.token0}-${p.token1}-${p.index}`).join(',') : '';
-  console.log(pools,'pools');
   
   /**
    * calculatedIndexPath - 计算出的最优池子索引路径
@@ -240,7 +240,7 @@ export default function SwapPage() {
 
     if (matchingPools.length > 0) {
       // 过滤掉价格为 0 的池子（未初始化的池子）
-      const validPools = matchingPools.filter(pool => pool.sqrtPriceX96 > 0n && pool.liquidity > 0n);
+      const validPools = matchingPools.filter(pool => pool.sqrtPriceX96 > BigInt(0) && pool.liquidity > BigInt(0));
       
       if (validPools.length === 0) {
         console.log('没有有效的池子（价格或流动性为 0）');
@@ -327,7 +327,7 @@ export default function SwapPage() {
    */
   const sqrtPriceLimitX96 = useMemo(() => {
     if (!tokenIn || !tokenOut || calculatedIndexPath.length === 0 || pools.length === 0) {
-      return 0n;
+      return BigInt(0);
     }
 
     // 找到选择的池子：不仅要匹配 index，还要确保 token 地址匹配
@@ -350,11 +350,11 @@ export default function SwapPage() {
           token1: p.token1,
         })),
       });
-      return 0n;
+      return BigInt(0);
     }
     
     // 确保池子已初始化（价格不为 0）且有流动性
-    if (selectedPool.sqrtPriceX96 === 0n || selectedPool.liquidity === 0n) {
+    if (selectedPool.sqrtPriceX96 === BigInt(0) || selectedPool.liquidity === BigInt(0)) {
       console.log("sqrtPriceLimitX96 计算: 池子未初始化或没有流动性", {
         poolIndex: selectedPool.index.toString(),
         sqrtPriceX96: selectedPool.sqrtPriceX96.toString(),
@@ -362,7 +362,7 @@ export default function SwapPage() {
         token0: selectedPool.token0,
         token1: selectedPool.token1,
       });
-      return 0n;
+      return BigInt(0);
     }
 
     // 判断交易方向：zeroForOne = tokenIn 是 token0 (从 token0 换 token1)
@@ -370,7 +370,7 @@ export default function SwapPage() {
     const zeroForOne = tokenIn.toLowerCase() === selectedPool.token0.toLowerCase();
     const currentPrice = selectedPool.sqrtPriceX96;
     
-    let result = 0n;
+    let result = BigInt(0);
     
     if (zeroForOne) {
       // 从 token0 换 token1，价格会下降
@@ -385,9 +385,9 @@ export default function SwapPage() {
         }
       }
       // 如果 tickLower 不可用，使用当前价格的 99%（但确保 > MIN_SQRT_PRICE）
-      if (result === 0n) {
-        const onePercentPrice = (currentPrice * 99n) / 100n;
-        result = onePercentPrice > MIN_SQRT_PRICE ? onePercentPrice : MIN_SQRT_PRICE + 1n;
+      if (result === BigInt(0)) {
+        const onePercentPrice = (currentPrice * BigInt(99)) / BigInt(100);
+        result = onePercentPrice > MIN_SQRT_PRICE ? onePercentPrice : MIN_SQRT_PRICE + BigInt(1);
       }
     } else {
       // 从 token1 换 token0，价格会上升
@@ -402,9 +402,9 @@ export default function SwapPage() {
         }
       }
       // 如果 tickUpper 不可用，使用当前价格的 101%（但确保 < MAX_SQRT_PRICE）
-      if (result === 0n) {
-        const onePercentPrice = (currentPrice * 101n) / 100n;
-        result = onePercentPrice < MAX_SQRT_PRICE ? onePercentPrice : MAX_SQRT_PRICE - 1n;
+      if (result === BigInt(0)) {
+        const onePercentPrice = (currentPrice * BigInt(101)) / BigInt(100);
+        result = onePercentPrice < MAX_SQRT_PRICE ? onePercentPrice : MAX_SQRT_PRICE - BigInt(1);
       }
     }
     
@@ -446,7 +446,7 @@ export default function SwapPage() {
     address: CONTRACTS.SWAP_ROUTER,
     abi: SWAP_ROUTER_ABI,
     functionName: isExactInput ? "quoteExactInput" : "quoteExactOutput",
-    args: isExactInput && amountIn && calculatedIndexPath.length > 0 && tokenIn && tokenOut && sqrtPriceLimitX96 > 0n && tokenInInfo
+    args: isExactInput && amountIn && calculatedIndexPath.length > 0 && tokenIn && tokenOut && sqrtPriceLimitX96 > BigInt(0) && tokenInInfo
       ? [
           {
             tokenIn,
@@ -456,7 +456,7 @@ export default function SwapPage() {
             sqrtPriceLimitX96,
           },
         ]
-      : !isExactInput && amountOut && calculatedIndexPath.length > 0 && tokenIn && tokenOut && sqrtPriceLimitX96 > 0n && tokenOutInfo
+      : !isExactInput && amountOut && calculatedIndexPath.length > 0 && tokenIn && tokenOut && sqrtPriceLimitX96 > BigInt(0) && tokenOutInfo
       ? [
           {
             tokenIn,
@@ -468,16 +468,17 @@ export default function SwapPage() {
         ]
       : undefined,
     query: {
-      enabled:
-        !!tokenIn &&
-        !!tokenOut &&
+      enabled: Boolean(
+        tokenIn &&
+        tokenOut &&
         calculatedIndexPath.length > 0 &&
         tokenInInfo &&
         tokenOutInfo &&
-        sqrtPriceLimitX96 > 0n &&
+        sqrtPriceLimitX96 > BigInt(0) &&
         indexPathAsNumbers.length > 0 &&
         ((isExactInput && !!amountIn && amountIn !== "0") ||
-          (!isExactInput && !!amountOut && amountOut !== "0")),
+          (!isExactInput && !!amountOut && amountOut !== "0"))
+      ),
     },
   });
 
@@ -489,7 +490,7 @@ export default function SwapPage() {
    *   - ExactOutput模式: 表示需要的输入代币数量
    * 注意: 这是原始值，需要根据代币的小数位数格式化为人类可读格式
    */
-  const quoteAmount = quoteSimulation?.result;
+  const quoteAmount = quoteSimulation?.result as bigint | undefined;
 
   // ============ useEffect - 处理价格计算错误 ============
   /**
@@ -563,7 +564,7 @@ export default function SwapPage() {
     }
     
     if (isExactInput && quoteAmount && tokenOutInfo) {
-      const formatted = formatTokenAmount(quoteAmount as bigint, tokenOutInfo.decimals);
+      const formatted = formatTokenAmount(quoteAmount, tokenOutInfo.decimals);
       console.log("格式化输出金额:", {
         quoteAmount: quoteAmount.toString(),
         decimals: tokenOutInfo.decimals,
@@ -577,7 +578,7 @@ export default function SwapPage() {
         setAmountOut("");
       }
     } else if (!isExactInput && quoteAmount && tokenInInfo) {
-      const formatted = formatTokenAmount(quoteAmount as bigint, tokenInInfo.decimals);
+      const formatted = formatTokenAmount(quoteAmount, tokenInInfo.decimals);
       console.log("格式化输入金额:", {
         quoteAmount: quoteAmount.toString(),
         decimals: tokenInInfo.decimals,
@@ -594,6 +595,73 @@ export default function SwapPage() {
       console.log("不满足更新条件");
     }
   }, [quoteAmount, isExactInput, tokenInInfo, tokenOutInfo, quoteError]);
+
+  // ============ 授权检查 ============
+  /**
+   * useTokenAllowance Hook - 检查输入代币对SWAP_ROUTER的授权额度
+   * 作用: 检查用户是否已授权SWAP_ROUTER合约可以花费输入代币
+   * 
+   * 返回值:
+   *   - allowance: 当前授权额度（BigInt格式）
+   *   - isLoading: 是否正在加载授权额度
+   *   - refetch: 手动刷新授权额度的函数
+   */
+  const { allowance, isLoading: isAllowanceLoading, refetch: refetchAllowance } = useTokenAllowance(
+    tokenIn,
+    CONTRACTS.SWAP_ROUTER
+  );
+
+  /**
+   * 计算需要的授权额度
+   * 根据交换模式计算实际需要的代币数量
+   */
+  const requiredAmount = useMemo(() => {
+    if (isExactInput && amountIn && tokenInInfo) {
+      return parseTokenAmount(amountIn, tokenInInfo.decimals);
+    } else if (!isExactInput && amountOut && tokenOutInfo && quoteAmount) {
+      // 在ExactOutput模式下，需要的输入金额由quoteAmount提供
+      return quoteAmount as bigint;
+    }
+    return BigInt(0);
+  }, [isExactInput, amountIn, amountOut, tokenInInfo, tokenOutInfo, quoteAmount]);
+
+  /**
+   * 检查是否需要授权
+   * 如果当前授权额度小于需要的金额，则需要授权
+   */
+  const needsApproval = useMemo(() => {
+    if (!tokenIn || requiredAmount === BigInt(0)) return false;
+    return allowance < requiredAmount;
+  }, [allowance, requiredAmount, tokenIn]);
+
+  // ============ Wagmi Hooks - 执行授权 ============
+  /**
+   * useWriteContract Hook - 执行代币授权
+   * 作用: 授权SWAP_ROUTER合约可以花费用户的输入代币
+   */
+  const { writeContract: approve, data: approveHash, isPending: isApproving } = useWriteContract();
+
+  /**
+   * useWaitForTransactionReceipt Hook - 等待授权交易确认
+   * 作用: 监听授权交易哈希，等待交易被区块链确认
+   */
+  const { isLoading: isApproveConfirming, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({
+    hash: approveHash,
+  });
+
+  // ============ useEffect - 处理授权成功 ============
+  /**
+   * useEffect - 处理授权成功后的操作
+   * 作用: 当授权成功确认后，刷新授权额度，然后自动执行swap
+   */
+  useEffect(() => {
+    if (isApproveSuccess) {
+      refetchAllowance();
+      queryClient.invalidateQueries();
+      // 授权成功后，自动执行swap（通过设置一个标志来触发）
+      // 注意：这里不直接调用handleSwap，而是通过状态来触发
+    }
+  }, [isApproveSuccess, refetchAllowance, queryClient]);
 
   // ============ Wagmi Hooks - 执行交易 ============
   /**
@@ -650,9 +718,32 @@ export default function SwapPage() {
     }
   }, [isSwapSuccess, queryClient]);
 
+  // ============ 主要函数 - 执行授权 ============
+  /**
+   * handleApprove - 执行代币授权
+   * 作用: 授权SWAP_ROUTER合约可以花费用户的输入代币
+   * 
+   * 授权策略:
+   *   - 授权一个非常大的数量（类似Max Uint256），避免频繁授权
+   *   - 这样用户只需要授权一次，之后就可以进行多次swap
+   */
+  const handleApprove = () => {
+    if (!tokenIn || !tokenInInfo) return;
+
+    // 审批一个非常大的数量（类似Max Uint256）
+    const maxApproval = BigInt(2) ** BigInt(256) - BigInt(1);
+
+    approve({
+      address: tokenIn,
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [CONTRACTS.SWAP_ROUTER, maxApproval],
+    });
+  };
+
   // ============ 主要函数 - 执行交换 ============
   /**
-   * handleSwap - 执行代币交换交易的主函数
+   * executeSwap - 实际执行代币交换的内部函数
    * 作用: 根据当前的交换模式（ExactInput或ExactOutput），调用合约执行交换
    * 
    * 执行流程:
@@ -691,7 +782,7 @@ export default function SwapPage() {
    *   - 用户需要确认并支付gas费用
    *   - 交易执行可能需要一定时间
    */
-  const handleSwap = () => {
+  const executeSwap = useCallback(() => {
     if (!tokenIn || !tokenOut || !address || indexPath.length === 0) return;
 
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 60 * 20); // 20分钟后过期
@@ -699,8 +790,19 @@ export default function SwapPage() {
     if (isExactInput && amountIn && tokenInInfo) {
       const amountInBig = parseTokenAmount(amountIn, tokenInInfo.decimals);
       const amountOutMinimum = quoteAmount
-        ? (quoteAmount as bigint) - ((quoteAmount as bigint) * 5n) / 100n // 5%滑点保护
-        : 0n;
+        ? (quoteAmount as bigint) - ((quoteAmount as bigint) * BigInt(5)) / BigInt(100) // 5%滑点保护
+        : BigInt(0);
+
+      console.log({
+        tokenIn,
+        tokenOut,
+        indexPath: indexPathAsNumbers as readonly number[],
+        recipient: address,
+        deadline,
+        amountIn: amountInBig,
+        amountOutMinimum,
+        sqrtPriceLimitX96,
+      },'exactInput');
 
       swap({
         address: CONTRACTS.SWAP_ROUTER,
@@ -722,8 +824,8 @@ export default function SwapPage() {
     } else if (!isExactInput && amountOut && tokenOutInfo) {
       const amountOutBig = parseTokenAmount(amountOut, tokenOutInfo.decimals);
       const amountInMaximum = quoteAmount
-        ? (quoteAmount as bigint) + ((quoteAmount as bigint) * 5n) / 100n // 5%滑点保护
-        : 2n ** 256n - 1n;
+        ? (quoteAmount as bigint) + ((quoteAmount as bigint) * BigInt(5)) / BigInt(100) // 5%滑点保护
+        : BigInt(2) ** BigInt(256) - BigInt(1);
 
       swap({
         address: CONTRACTS.SWAP_ROUTER,
@@ -742,6 +844,70 @@ export default function SwapPage() {
           },
         ],
       });
+    }
+  }, [
+    tokenIn,
+    tokenOut,
+    address,
+    indexPath.length,
+    isExactInput,
+    amountIn,
+    amountOut,
+    tokenInInfo,
+    tokenOutInfo,
+    quoteAmount,
+    indexPathAsNumbers,
+    sqrtPriceLimitX96,
+    swap,
+  ]);
+
+  // ============ useEffect - 授权成功后自动执行swap ============
+  /**
+   * useEffect - 当授权成功确认后，自动执行swap
+   * 作用: 避免用户需要手动点击两次按钮（先授权，再swap）
+   * 
+   * 注意: 使用一个状态来跟踪是否需要自动执行swap
+   *   这样可以避免在授权成功后立即执行，而是等待授权额度刷新完成
+   */
+  const [shouldAutoSwap, setShouldAutoSwap] = useState(false);
+
+  useEffect(() => {
+    if (isApproveSuccess) {
+      // 授权成功，标记需要自动执行swap
+      setShouldAutoSwap(true);
+    }
+  }, [isApproveSuccess]);
+
+  useEffect(() => {
+    if (shouldAutoSwap && !needsApproval && !isAllowanceLoading) {
+      // 授权成功、不再需要授权、且授权额度已刷新时，自动执行swap
+      setShouldAutoSwap(false);
+      const timer = setTimeout(() => {
+        executeSwap();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [shouldAutoSwap, needsApproval, isAllowanceLoading, executeSwap]);
+
+  /**
+   * handleSwap - 执行代币交换交易的主函数（带授权检查）
+   * 作用: 在执行swap之前，先检查授权状态
+   * 
+   * 执行流程:
+   *   1. 检查是否需要授权
+   *   2. 如果需要授权，先执行授权操作
+   *   3. 如果不需要授权或授权已完成，直接执行swap
+   */
+  const handleSwap = () => {
+    if (!tokenIn || !tokenOut || !address || indexPath.length === 0) return;
+
+    // 检查是否需要授权
+    if (needsApproval) {
+      // 需要授权，先执行授权
+      handleApprove();
+    } else {
+      // 不需要授权，直接执行swap
+      executeSwap();
     }
   };
 
@@ -801,6 +967,44 @@ export default function SwapPage() {
     indexPath.length > 0 &&
     ((isExactInput && amountIn && amountIn !== "0") ||
       (!isExactInput && amountOut && amountOut !== "0"));
+
+  /**
+   * 计算按钮文本和禁用状态
+   * 根据授权状态和交易状态显示不同的按钮文本
+   */
+  const getButtonText = () => {
+    if (isApproving || isApproveConfirming) {
+      return "授权中...";
+    }
+    if (isSwapPending || isConfirming) {
+      return "交易中...";
+    }
+    if (!canSwap) {
+      return "输入金额";
+    }
+    if (needsApproval) {
+      return `授权 ${tokenInInfo?.symbol || ""}`;
+    }
+    return "Swap";
+  };
+
+  /**
+   * 计算按钮是否禁用
+   * 在以下情况下禁用按钮：
+   * - 不满足交换条件
+   * - 正在授权或等待授权确认
+   * - 正在执行swap或等待swap确认
+   * - 正在计算价格
+   * - 正在加载授权额度
+   */
+  const isButtonDisabled =
+    !canSwap ||
+    isApproving ||
+    isApproveConfirming ||
+    isSwapPending ||
+    isConfirming ||
+    isQuoteLoading ||
+    isAllowanceLoading;
 
   // ============ UI渲染 - 钱包未连接状态 ============
   /**
@@ -986,6 +1190,7 @@ export default function SwapPage() {
               {pools.length > 0 && (() => {
                 const selectedPool = pools.find(p => p.index === calculatedIndexPath[0]);
                 if (selectedPool) {
+                  console.log(selectedPool,'selectedPool');
                   // 流动性格式化：流动性值通常很大，使用科学计数法或简单格式化
                   const liquidityStr = selectedPool.liquidity.toString();
                   const liquidityDisplay = liquidityStr.length > 10 
@@ -1007,31 +1212,39 @@ export default function SwapPage() {
 
           {/* ========== Swap执行按钮 ========== */}
           {/* 
-            主交换按钮：
-            - onClick: 点击时调用handleSwap函数执行交换
+            主交换/授权按钮：
+            - onClick: 点击时调用handleSwap函数，会自动检查授权并执行相应操作
             - disabled: 按钮禁用条件（任一满足即禁用）:
               * !canSwap: 不满足交换条件（未选择代币、无金额等）
-              * isSwapPending: 正在等待用户确认交易（钱包弹窗中）
-              * isConfirming: 交易已提交，正在等待区块链确认
+              * isApproving: 正在等待用户确认授权交易（钱包弹窗中）
+              * isApproveConfirming: 授权交易已提交，正在等待区块链确认
+              * isSwapPending: 正在等待用户确认swap交易（钱包弹窗中）
+              * isConfirming: swap交易已提交，正在等待区块链确认
               * isQuoteLoading: 正在计算价格（避免在价格未确定时执行）
+              * isAllowanceLoading: 正在加载授权额度
             
             按钮文本状态：
-            - "交易中...": 交易已提交，正在等待确认（isSwapPending || isConfirming）
+            - "授权中...": 正在授权（isApproving || isApproveConfirming）
+            - "交易中...": 正在执行swap（isSwapPending || isConfirming）
             - "输入金额": 不满足交换条件（!canSwap）
+            - "授权 [代币符号]": 需要授权（needsApproval）
             - "Swap": 可以执行交换
             
             - className="w-full": 全宽按钮，占据整行
+            
+            工作流程：
+            1. 用户点击按钮
+            2. handleSwap检查是否需要授权
+            3. 如果需要授权，先执行授权操作
+            4. 授权成功后，自动执行swap（通过useEffect）
+            5. 如果不需要授权，直接执行swap
           */}
           <Button
             onClick={handleSwap}
-            disabled={!canSwap || isSwapPending || isConfirming || isQuoteLoading}
+            disabled={isButtonDisabled}
             className="w-full"
           >
-            {isSwapPending || isConfirming
-              ? "交易中..."
-              : !canSwap
-              ? "输入金额"
-              : "Swap"}
+            {getButtonText()}
           </Button>
 
           {/* ========== 路由信息（底部） ========== */}
